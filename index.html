@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seldon.Sber</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <div id="background-grid"></div>
+
+  <div class="container">
+    <header>
+      <h1>Поиск по отправителю</h1>
+      <input type="text" id="searchInput" placeholder="Введите фамилию (например, Греф Г.О.)" />
+      <button id="searchButton">Найти</button>
+
+      <label for="dateFilter" style="margin-left:20px;">Период:</label>
+      <select id="dateFilter">
+        <optgroup label="Кратко">
+          <option value="7d">1 неделя</option>
+          <option value="1m">1 месяц</option>
+          <option value="3m">3 месяца</option>
+          <option value="6m">6 месяцев</option>
+          <option value="9m">9 месяцев</option>
+        </optgroup>
+        <optgroup label="Длиннее">
+          <option value="1y">1 год</option>
+          <option value="2y">2 года</option>
+          <option value="all">Всё время</option>
+        </optgroup>
+      </select>
+    </header>
+
+    <main>
+      <div id="graph-container">
+        <svg id="graph"></svg>
+      </div>
+      <aside id="info-panel">
+        <h2>Детали документа</h2>
+        <div id="detailsContent"></div>
+      </aside>
+    </main>
+
+    <footer>
+      <button id="backButton">Вернуться назад</button>
+    </footer>
+  </div>
+
+  <script src="extra_data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
