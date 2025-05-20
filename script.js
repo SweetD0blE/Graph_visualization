@@ -12,7 +12,7 @@ let allNodes = [];
 let allLinks = [];
 let currentSenderKey = null;
 let currentSenderLabel = null;
-let tagClickEnabled = true;
+let expandLock = false;
 
 const dateFilterEl = document.getElementById("dateFilter");
 
@@ -83,7 +83,7 @@ function filterByDate(edges, range) {
   });
 }
 
-// Загрузка graph_data.json
+// ─── Загрузка исходных данных ─────────────────────────
 let graphDataNodes = [];
 d3.json("graph_data.json")
   .then(data => { graphDataNodes = data.nodes; })
@@ -104,14 +104,16 @@ svg.call(zoomBehavior).on("dblclick.zoom", null);
 // ─── DRAG HANDLERS ────────────────────────────────────
 function dragstarted(event, d) {
   if (!event.active) simulation.alphaTarget(0.3).restart();
-  d.fx = d.x; d.fy = d.y;
+  d.fx = d.x;
+  d.fy = d.y;
 }
 function dragged(event, d) {
-  d.fx = event.x; d.fy = event.y;
+  d.fx = event.x;
+  d.fy = event.y;
 }
 function dragended(event, d) {
   if (!event.active) simulation.alphaTarget(0);
-  if (d.type === "category" || d.expanded) {
+  if (d.type ==="category" || d.type ==="tag" || d.fixed || d.expanded) {
     d.fx = d.x;
     d.fy = d.y;
   } else {
@@ -145,102 +147,105 @@ function showEdgeDetails(d) {
   d3.select("#detailsContent").style("display", "block");
 }
 
-// ─── BUILD GRAPH FROM SENDER ─────────────────────────
+// ─── ПОСТРОЕНИЕ ГРАФА ─────────────────────────────────
 function buildGraphFromSender(senderInput) {
   currentSenderLabel = senderInput;
   currentSenderKey = senderInput.trim().toLowerCase();
 
   const matched = [];
 
-  // Собираем все связи, где отправитель совпадает
   Object.entries(window.extraData).forEach(([tagId, data]) => {
     data.edges.forEach(e => {
-      const sender = (e.details.sender || "").toLowerCase();
-      if (sender === currentSenderKey) {
+      if ((e.details.sender || "").toLowerCase() === currentSenderKey) {
         matched.push({ tagId, data, details: e.details });
       }
     });
   });
 
-  if (!matched.length) {
-    alert("Отправитель не найден.");
-    return;
-  }
-
-  // Фильтруем по дате
   const range = dateFilterEl.value;
   const filtered = matched.filter(({ details }) => filterByDate([{ details }], range).length);
+  if (!filtered.length) return alert("Нет документов за период.");
 
-  if (!filtered.length) {
-    alert("Нет документов за выбранный период.");
-    return;
-  }
-
-  // Инициализация
-  const nodesMap = new Map();
-  const links = [];
   const senderId = "sender_node";
-
   const fam = senderInput.split(" ")[0];
   const senderIdGuess = translit(fam);
-  const senderNodeInfo = graphDataNodes.find(n => n.id === senderIdGuess);
+  const senderImg = graphDataNodes.find(n => n.id === senderIdGuess)?.img;
 
-  nodesMap.set(senderId, {
+  const nodeMap = new Map();
+  const links = [];
+  const docTypeMap = {};
+  const docTypeToDocs = {};
+
+  nodeMap.set(senderId, {
     id: senderId,
     label: currentSenderLabel,
     type: "person",
-    img: senderNodeInfo ? senderNodeInfo.img : null,
+    img: senderImg || null,
     fixed: true
   });
 
-  // Построение структуры: sender → category → tag
   filtered.forEach(({ tagId, details }) => {
-    const tagLabel = details.tag || tagId;
-    const categoryLabel = details.category || "Без категории";
+    const category = details.category || "Без категории";
+    const categoryId = translit(category).replace(/\s+/g, "_");
 
-    const categoryId = translit(categoryLabel).replace(/\s+/g, "_");
-    const tagNodeId = tagId;
+    const tag = details.tag || tagId;
+    const tagIdNode = tagId;
+
+    const docType = details.doc_type || "Без типа";
+    const docId = `${tagIdNode}_doc_${translit(docType)}`;
+    const regNum = details.registration_number || `unnamed_${Math.random()}`;
 
     // Категория
-    if (!nodesMap.has(categoryId)) {
-      nodesMap.set(categoryId, {
-        id: categoryId,
-        label: categoryLabel,
-        type: "category"
-      });
+    if (!nodeMap.has(categoryId)) {
+      nodeMap.set(categoryId, { id: categoryId, label: category, type: "category" });
       links.push({ source: senderId, target: categoryId });
     }
 
     // Тег
-    if (!nodesMap.has(tagNodeId)) {
-      nodesMap.set(tagNodeId, {
-        id: tagNodeId,
-        label: tagLabel,
-        type: "tag"
-      });
+    if (!nodeMap.has(tagIdNode)) {
+      nodeMap.set(tagIdNode, { id: tagIdNode, label: tag, type: "tag" });
+      links.push({ source: categoryId, target: tagIdNode });
     }
 
-    links.push({ source: categoryId, target: tagNodeId });
+    // Вид документа
+    if (!nodeMap.has(docId)) {
+      nodeMap.set(docId, {
+        id: docId,
+        label: docType,
+        type: "doc_type",
+        count: 0,
+        docs: new Set()
+      });
+      links.push({ source: tagIdNode, target: docId });
+    }
+
+    nodeMap.get(docId).docs.add(regNum);
+
+    // Подсчёт doc_type на уровне тега
+    docTypeMap[tagIdNode] = docTypeMap[tagIdNode] || new Set();
+    docTypeMap[tagIdNode].add(docType);
   });
 
-  // Счётчики тегов
-  const tagCounts = {};
-  filtered.forEach(({ tagId }) => {
-    tagCounts[tagId] = (tagCounts[tagId] || 0) + 1;
-  });
-
-  // Применяем счётчики к тегам
-  for (const [id, node] of nodesMap.entries()) {
-    if (node.type === "tag") node.count = tagCounts[id] || 0;
+  // Обновляем .count на doc_type
+  for (const node of nodeMap.values()) {
+    if (node.type === "doc_type") {
+      node.count = node.docs.size;
+      delete node.docs; // Удалим временное поле
+    }
   }
 
-  allNodes = Array.from(nodesMap.values());
-  allLinks = links;
+  // Обновляем .count на тегах (кол-во doc_type)
+  for (const [tagIdNode, docSet] of Object.entries(docTypeMap)) {
+    const node = nodeMap.get(tagIdNode);
+    if (node) node.count = docSet.size;
+  }
 
+  allNodes = Array.from(nodeMap.values());
+  allLinks = links;
   buildGraph(allNodes, allLinks);
 }
 
-// ─── BUILD GRAPH ──────────────────────────────────────
+// ─── ВИЗУАЛИЗАЦИЯ ─────────────────────────────────────
 function buildGraph(nodes, links) {
   const currentTransform = d3.zoomTransform(svg.node());
   d3.select("#detailsContent").style("display", "none").html("");
@@ -251,19 +256,29 @@ function buildGraph(nodes, links) {
   const linkGroup = container.append("g").attr("class", "links");
   const nodeGroup = container.append("g").attr("class", "nodes");
 
-  const docKeys = Array.from(new Set(links.map(l => l.details?.registration_number)));
+  // Цвета для doc_type → person
+  const docKeys = Array.from(new Set(
+    links
+      .filter(d => {
+        const src = d.source.id || d.source;
+        const tgt = d.target.id || d.target;
+        const srcType = (nodes.find(n => n.id === src) || {}).type;
+        const tgtType = (nodes.find(n => n.id === tgt) || {}).type;
+        return srcType === "doc_type" && tgtType === "person";
+      })
+      .map(l => l.details?.registration_number)
+  ));
+
   const edgeColor = d3.scaleOrdinal()
     .domain(docKeys)
     .range(d3.schemeSet3);
 
+  // Настройка симуляции с усиленным отталкиванием и большей дистанцией
   simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links)
-      .id(d => d.id)
-      .distance(180)
-      .strength(1))
-    .force("charge", d3.forceManyBody().strength(-300))
+    .force("link", d3.forceLink(links).id(d => d.id).distance(220).strength(1))
+    .force("charge", d3.forceManyBody().strength(-700))
     .force("center", d3.forceCenter(width / 2, height / 2))
-    .force("collision", d3.forceCollide().radius(d => 45));
+    .force("collision", d3.forceCollide().radius(d => getNodeRadius(d) + 10));
 
   // Линии
   linkGroup.selectAll("line")
@@ -271,78 +286,61 @@ function buildGraph(nodes, links) {
     .join("line")
     .attr("class", "link")
     .attr("stroke", d => {
-      const srcType = d.source.type || nodes.find(n => n.id === d.source)?.type;
-      return srcType === "tag"
-        ? edgeColor(d.details?.registration_number)
+      const srcId = d.source.id || d.source;
+      const tgtId = d.target.id || d.target;
+      const srcType = (nodes.find(n => n.id === srcId) || {}).type;
+      const tgtType = (nodes.find(n => n.id === tgtId) || {}).type;
+
+      return (srcType === "doc_type" && tgtType === "person")
+        ? edgeColor(d.details?.registration_number || "default")
         : "#888";
     })
-    .attr("stroke-width", 2)
-    .on("click", (e, d) => showEdgeDetails(d));
-
-  // Подписи "1"
-  linkGroup.selectAll("text.link-label")
-    .data(
-      links.filter(d => {
-        const src = d.source.id || d.source;
-        const nd = nodes.find(n => n.id === src);
-        return nd && nd.type === "tag";
-      }),
-      d => `${d.source.id || d.source}->${d.target.id || d.target}`
-    )
-    .join("text")
-    .attr("class", "link-label")
-    .attr("dy", -5)
-    .attr("text-anchor", "middle")
-    .attr("font-size", "16px")
-    .attr("fill", "#fff")
-    .text("1")
+    .attr("stroke-width", 3.5)
     .on("click", (e, d) => showEdgeDetails(d));
 
   // Узлы
   const nodeSel = nodeGroup.selectAll("g.node")
     .data(nodes, d => d.id)
-    .join(
-      enter => {
-        const g = enter.append("g")
-          .attr("class", "node")
-          .call(d3.drag()
-            .on("start", dragstarted)
-            .on("drag", dragged)
-            .on("end", dragended));
+    .join(enter => {
+      const g = enter.append("g")
+        .attr("class", "node")
+        .call(d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended));
 
-        const r = d => d.type === "person" && d.fixed ? 40 : d.type === "category" ? 35 : 30;
+      g.each(function (d) {
+        const r = getNodeRadius(d);
+        const grp = d3.select(this);
 
-        g.each(function (d) {
-          const grp = d3.select(this);
-          if (d.img) {
-            grp.append("image")
-              .attr("href", d.img)
-              .attr("x", -r(d)).attr("y", -r(d))
-              .attr("width", 2 * r(d)).attr("height", 2 * r(d))
-              .attr("clip-path", `circle(${r(d)}px at ${r(d)}px ${r(d)}px)`);
-          } else {
-            grp.append("circle")
-              .attr("r", r(d))
-              .attr("fill",
-                d.type === "person" && d.fixed ? "#FF7043" :
-                  d.type === "category" ? "#42A5F5" :
-                    d.type === "tag" ? "#66BB6A" : "#999");
-          }
-        });
+        if (d.img) {
+          grp.append("image")
+            .attr("href", d.img)
+            .attr("x", -r).attr("y", -r)
+            .attr("width", 2 * r).attr("height", 2 * r)
+            .attr("clip-path", `circle(${r}px at ${r}px ${r}px)`);
+        } else {
+          grp.append("circle")
+            .attr("r", r)
+            .attr("fill",
+              d.type === "person" ? "#FF7043" :
+              d.type === "category" ? "#42A5F5" :
+              d.type === "tag" ? "#66BB6A" :
+              "#AB47BC");
+        }
 
-        g.append("text")
-          .attr("dy", d => r(d) + 14)
+        grp.append("text")
+          .attr("dy", r + 14)
           .attr("text-anchor", "middle")
           .style("fill", "#fff")
           .style("font-size", "12px")
-          .text(d => d.label);
-        return g;
-      },
-      update => update,
-      exit => exit.remove()
-    );
+          .text(d.label);
+      });
 
-  // Пузырьки-счётчики на тегах
+      return g;
+    });
+
+  // Счётчики на тегах (уникальные doc_type)
   nodeSel.filter(d => d.type === "tag" && d.count > 0)
     .append("circle")
     .attr("class", "count-bubble")
@@ -351,9 +349,9 @@ function buildGraph(nodes, links) {
     .attr("cy", -25)
     .attr("fill", "grey")
     .on("click", (e, d) => {
-      const edge = allLinks.find(l => (l.source.id || l.source) === d.id);
-      if (edge) showEdgeDetails(edge);
       e.stopPropagation();
+      const edge = links.find(l => l.source === d.id || l.source.id === d.id);
+      if (edge) showEdgeDetails(edge);
     });
 
   nodeSel.filter(d => d.type === "tag" && d.count > 0)
@@ -366,64 +364,7 @@ function buildGraph(nodes, links) {
     .style("text-anchor", "middle")
     .text(d => d.count);
 
-  // Обработка double-click по тегу
-  nodeSel.filter(d => d.type === "tag")
-    .on("dblclick", (event, d) => {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      if (!tagClickEnabled) return;
-      tagClickEnabled = false;
-      const extra = window.extraData[d.id];
-      if (!extra || !currentSenderKey) return;
-
-      let edgesFor = extra.edges.filter(e =>
-        (e.details.sender || "").toLowerCase() === currentSenderKey
-      );
-      edgesFor = filterByDate(edgesFor, dateFilterEl.value);
-      if (!edgesFor.length) return;
-
-      const recNames = Array.from(new Set(edgesFor.flatMap(e => e.details.receivers || [])));
-      const R = 150, step = 2 * Math.PI / recNames.length;
-      let idx = 0;
-
-      const newNodes = recNames.map(name => {
-        const orig = extra.nodes.find(n => n.label === name || n.id === name);
-        const clone = orig
-          ? { ...orig }
-          : { id: `${d.id}_recv_${idx}`, label: name, type: "person", img: null };
-        clone.id = orig ? `${d.id}_${orig.id}` : clone.id;
-        clone.x = d.x + R * Math.cos(idx * step);
-        clone.y = d.y + R * Math.sin(idx * step);
-        idx++;
-        return clone;
-      }).filter(n => !allNodes.some(x => x.id === n.id));
-
-      const newEdges = newNodes.map(n => {
-        const det = edgesFor.find(e =>
-          (e.details.receivers || []).includes(n.label)
-        ).details;
-        return { source: d.id, target: n.id, details: det };
-      });
-
-      allNodes.push(...newNodes);
-      allLinks.push(...newEdges);
-
-      simulation.nodes(allNodes)
-        .force("link", d3.forceLink(allLinks)
-          .id(n => n.id)
-          .distance(180)
-          .strength(1))
-        .alpha(1)
-        .restart();
-
-      simulation.on("end", () => {
-        tagClickEnabled = true;
-        simulation.on("end", null);
-      });
-
-      buildGraph(allNodes, allLinks);
-    });
-
+  // Один simulation.tick
   simulation.on("tick", () => {
     linkGroup.selectAll("line")
       .attr("x1", d => d.source.x)
@@ -438,9 +379,88 @@ function buildGraph(nodes, links) {
     nodeGroup.selectAll("g.node")
       .attr("transform", d => `translate(${d.x},${d.y})`);
   });
+
+  // Функция радиуса
+  function getNodeRadius(d) {
+    if (d.type === "person" && d.fixed) return 40;
+    if (d.type === "category") return 35;
+    if (d.type === "tag") return 30;
+    if (d.type === "doc_type") {
+      const base = 25;
+      return base + (d.count > 1 ? (d.count - 1) * 5 : 0);
+    }
+    return 25;
+  }
+
+  // double-click на doc_type → раскрытие получателей
+ nodeSel.filter(d => d.type === "doc_type")
+  .on("dblclick", (event, d) => {
+    if (expandLock) return;
+    expandLock = true;
+
+    const tagId = d.id.split("_doc_")[0];
+    const extra = window.extraData[tagId];
+    if (!extra || !currentSenderKey) return;
+
+    let edgesFor = extra.edges.filter(e =>
+      (e.details.sender || "").toLowerCase() === currentSenderKey &&
+      (e.details.doc_type || "").toLowerCase() === d.label.toLowerCase()
+    );
+    edgesFor = filterByDate(edgesFor, dateFilterEl.value);
+    if (!edgesFor.length) return;
+
+    const recNames = Array.from(new Set(edgesFor.flatMap(e => e.details.receivers || [])));
+    const R = 150, step = 2 * Math.PI / recNames.length;
+    let idx = 0;
+
+    const newNodes = recNames.map(name => {
+      const isSenderItself = name.toLowerCase() === currentSenderKey;
+      const orig = extra.nodes.find(n => n.label === name || n.id === name);
+      const baseId = orig?.id || `recv_${idx}`;
+      const nodeId = `${d.id}_${isSenderItself ? "self" : baseId}`;
+
+      if (allNodes.some(n => n.id === nodeId)) return null;
+
+      return {
+        id: nodeId,
+        label: name,
+        type: "person",
+        img: orig?.img || null,
+        x: d.x + R * Math.cos(idx * step),
+        y: d.y + R * Math.sin(idx * step)
+      };
+    }).filter(Boolean);
+
+    const newEdges = [];
+
+    newNodes.forEach(n => {
+      const matchedDocs = edgesFor.filter(e =>
+        (e.details.receivers || []).includes(n.label)
+      );
+
+    matchedDocs.forEach(e => {
+    newEdges.push({ source: d.id, target: n.id, details: e.details });
+  });
+});
+
+    allNodes.push(...newNodes);
+    allLinks.push(...newEdges);
+
+    simulation.nodes(allNodes)
+      .force("link", d3.forceLink(allLinks)
+        .id(n => n.id)
+        .distance(220)
+        .strength(1))
+      .alpha(1)
+      .restart();
+
+    buildGraph(allNodes, allLinks);
+
+    setTimeout(() => expandLock = false, 5000);
+  });
 }
 
-// ─── UI EVENTS ───────────────────────────────────────
+// ─── UI ───────────────────────────────────────────────
 document.getElementById("searchButton").addEventListener("click", () => {
   const v = document.getElementById("searchInput").value.trim();
   if (v) buildGraphFromSender(v);
@@ -457,7 +477,25 @@ document.getElementById("backButton").addEventListener("click", () => {
   currentSenderLabel = null;
 });
 
-// перестроить при смене периода
 dateFilterEl.addEventListener("change", () => {
   if (currentSenderKey) buildGraphFromSender(currentSenderLabel);
 });
+
+// ─── HELP MODAL ───────────────────────────────────────
+const helpModal = document.getElementById("helpModal");
+const helpButton = document.getElementById("helpButton");
+const closeModal = document.querySelector(".modal .close");
+
+helpButton.onclick = () => {
+  helpModal.style.display = "block";
+};
+
+closeModal.onclick = () => {
+  helpModal.style.display = "none";
+};
+
+window.onclick = event => {
+  if (event.target === helpModal) {
+    helpModal.style.display = "none";
+  }
+};

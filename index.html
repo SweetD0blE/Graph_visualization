@@ -48,6 +48,72 @@
     </footer>
   </div>
 
+  <!-- Кнопка "?" -->
+<button id="helpButton" title="Справка">?</button>
+
+<!-- Модальное окно -->
+<div id="helpModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>Как пользоваться графом</h2>
+    
+    <div class="help-item">
+      <div class="help-header">Отправитель</div>
+      <ul class="help-list">
+        <li>Стартовая точка (самый крупный узел)</li>
+        <li>Указывает, кто создал документ</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Категория</div>
+      <ul class="help-list">
+        <li>Группирует темы (синие круги)</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Тег</div>
+      <ul class="help-list">
+        <li>Конкретизирует тему (зелёные круги)</li>
+        <li>Счётчик показывает количество уникальных видов документов</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Вид документа</div>
+      <ul class="help-list">
+        <li>Показывает тип документа (фиолетовые круги)</li>
+        <li>Можно раскрыть двойным кликом</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Получатели</div>
+      <ul class="help-list">
+        <li>Сотрудники, к которым адресован документ</li>
+        <li>Появляются после двойного клика по виду документа</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Детали документа</div>
+      <ul class="help-list">
+        <li>Кликните на связь между узлами — откроются подробности</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Управление графом</div>
+      <ul class="help-list">
+        <li>Масштаб: колёсико мыши</li>
+        <li>Перемещение: зажмите и тяните категории или теги</li>
+        <li>Для возврата — кнопка «Вернуться назад»</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
   <script src="extra_data.js"></script>
   <script src="script.js"></script>
 </body>
