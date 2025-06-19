@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Seldon.Sber</title>
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+  <div id="background-grid"></div>
+
+  <div class="container">
+    <header>
+  <h1>Поиск по отправителю</h1>
+
+  <div class="header-controls">
+    <div class="select-wrapper">
+      <label for="sender-select">Выберите отправителя:</label>
+      <select id="sender-select">
+        <option value="">-- выберите --</option>
+      </select>
+    </div>
+
+    <div class="select-wrapper">
+      <label for="dateFilter">Выберите период:</label>
+      <select id="dateFilter">
+        <optgroup label="Кратко">
+          <option value="7d">1 неделя</option>
+          <option value="1m">1 месяц</option>
+          <option value="3m">3 месяца</option>
+          <option value="6m">6 месяцев</option>
+          <option value="9m">9 месяцев</option>
+        </optgroup>
+        <optgroup label="Длиннее">
+          <option value="1y">1 год</option>
+          <option value="2y">2 года</option>
+          <option value="all">Всё время</option>
+        </optgroup>
+      </select>
+    </div>
+
+    <button id="searchButton">Найти</button>
+  </div>
+</header>
+
+    <main>
+      <div id="graph-container">
+        <svg id="graph"></svg>
+      </div>
+      <aside id="info-panel">
+        <h2>Детали документа</h2>
+        <div id="detailsContent"></div>
+      </aside>
+    </main>
+
+    <footer>
+      <button id="backButton">Вернуться назад</button>
+    </footer>
+  </div>
+
+  <!-- Кнопка "?" -->
+<button id="helpButton" title="Справка">?</button>
+
+<!-- Модальное окно -->
+<div id="helpModal" class="modal">
+  <div class="modal-content">
+    <span class="close">&times;</span>
+    <h2>Как пользоваться графом</h2>
+    
+    <div class="help-item">
+      <div class="help-header">Отправитель</div>
+      <ul class="help-list">
+        <li>Стартовая точка (самый крупный узел)</li>
+        <li>Указывает, кто создал документ</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Категория</div>
+      <ul class="help-list">
+        <li>Группирует темы (синие круги)</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Тег</div>
+      <ul class="help-list">
+        <li>Конкретизирует тему (зелёные круги)</li>
+        <li>Счётчик показывает количество уникальных видов документов</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Вид документа</div>
+      <ul class="help-list">
+        <li>Показывает тип документа (фиолетовые круги)</li>
+        <li>Можно раскрыть двойным кликом</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Получатели</div>
+      <ul class="help-list">
+        <li>Сотрудники, к которым адресован документ</li>
+        <li>Появляются после двойного клика по виду документа</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Детали документа</div>
+      <ul class="help-list">
+        <li>Кликните на связь между узлами — откроются подробности</li>
+      </ul>
+    </div>
+    
+    <div class="help-item">
+      <div class="help-header">Управление графом</div>
+      <ul class="help-list">
+        <li>Масштаб: колёсико мыши</li>
+        <li>Перемещение: зажмите и тяните категории или теги</li>
+        <li>Для возврата — кнопка «Вернуться назад»</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+  <script src="extra_data.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>
