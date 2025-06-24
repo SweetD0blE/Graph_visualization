@@ -1,3 +1,27 @@
+const qlikUrl = "https://iamotp.ca.sbrf.ru/ngam-da/extensions/mashup_it/mashup_it.html"
+const interval = 10 * 60 * 1000
+
+function pingQlik() {
+    fetch(qlikUrl, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-cache'
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log(`[${new Date().toLocalTimeString()}] Пинг успешен`)
+        } else {
+            console.warn(`[${new Date().toLocalTimeString()}] Ответ от сервера: ${response.status}`)
+        }
+    })
+    .catch(error=>{
+        console.error(`[${new Date().toLocalTimeString()}] Ошибка пинга:`, error)
+    });
+}
+
+pingQlik();
+setInterval(pingQlik, interval)
+
 // script.js
 const width = window.innerWidth;
 const height = window.innerHeight;
@@ -147,7 +171,7 @@ function dragended(event, d) {
 function showEdgeDetails(d) {
   const det = d.details || {};
   d3.select("#detailsContent").html(`
-    <p><strong>Ссылка:</strong> ${det.link || '-'}</p>
+    <p><strong>Ссылка:</strong> <a href ="${det.link}" target="_blank" rel="noopener noreferrer">${det.link}</a></p>
     <p><strong>Номер регистрации:</strong> ${det.registration_number || '-'}</p>
     <p><strong>Системный номер:</strong> ${det.system_number || '-'}</p>
     <p><strong>Дата регистрации:</strong> ${det.reg_date || '-'}</p>
@@ -193,6 +217,7 @@ function buildGraphFromSender(senderInput) {
   const senderImg = graphDataNodes.find(n => n.id === senderIdGuess)?.img;
 
   const nodeMap = new Map();
+  const categoryToTagsMap = new Map();
   const links = [];
   const docTypeMap = {};
 
@@ -217,7 +242,7 @@ function buildGraphFromSender(senderInput) {
 
     // Категория
     if (!nodeMap.has(categoryId)) {
-      nodeMap.set(categoryId, { id: categoryId, label: category, type: "category" });
+      nodeMap.set(categoryId, { id: categoryId, label: category, type: "category"});
       links.push({ source: senderId, target: categoryId });
     }
 
@@ -301,8 +326,8 @@ function buildGraph(nodes, links) {
 
   // Настройка симуляции с усиленным отталкиванием и большей дистанцией
   simulation = d3.forceSimulation(nodes)
-    .force("link", d3.forceLink(links).id(d => d.id).distance(220).strength(1))
-    .force("charge", d3.forceManyBody().strength(-700))
+    .force("link", d3.forceLink(links).id(d => d.id).distance(350).strength(1))
+    .force("charge", d3.forceManyBody().strength(-1000))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collision", d3.forceCollide().radius(d => getNodeRadius(d) + 10));
 
@@ -409,7 +434,13 @@ function buildGraph(nodes, links) {
   // Функция радиуса
   function getNodeRadius(d) {
    if (d.type === "person" && d.fixed) return 60;
-   if (d.type === "category") return 50;
+   //if (d.type === "category") return 50;
+   if (d.type === "category") {
+   	const base = 30;
+	const count = d.tagCount || 0;
+	const radius = base + (count > 0 ? count * 5 : 0);
+	return Math.min(radius, 180);
+   }
    if (d.type === "tag") return 40;
    if (d.type === "doc_type") {
      const base = 30;
@@ -424,13 +455,6 @@ function buildGraph(nodes, links) {
   .on("dblclick", (event, d) => {
     if (expandLock) return;
     expandLock = true;
-	
-	  // Зафиксируем doc_type, чтобы он не "улетал"
-    const docNode = allNodes.find(n => n.id === d.id);
-    if (docNode) {
-      docNode.fx = docNode.x;
-      docNode.fy = docNode.y;
-    }
 
     const tagId = d.id.split("_doc_")[0];
     const extra = window.extraData[tagId];
@@ -490,7 +514,7 @@ function buildGraph(nodes, links) {
 
     buildGraph(allNodes, allLinks);
 
-    setTimeout(() => expandLock = false, 5000);
+    setTimeout(() => expandLock = false, 2000);
   });
 }
 
