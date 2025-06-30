@@ -1,3 +1,27 @@
+const qlikUrl = "https://iamotp.ca.sbrf.ru/ngam-da/extensions/mashup_it/mashup_it.html"
+const interval = 10 * 60 * 1000
+
+function pingQlik() {
+    fetch(qlikUrl, {
+        method: 'GET',
+        credentials: 'include',
+        cache: 'no-cache'
+    })
+    .then(response => {
+        if (response.ok) {
+            console.log(`[${new Date().toLocalTimeString()}] Пинг успешен`)
+        } else {
+            console.warn(`[${new Date().toLocalTimeString()}] Ответ от сервера: ${response.status}`)
+        }
+    })
+    .catch(error=>{
+        console.error(`[${new Date().toLocalTimeString()}] Ошибка пинга:`, error)
+    });
+}
+
+pingQlik();
+setInterval(pingQlik, interval)
+
 // script.js
 const width = window.innerWidth;
 const height = window.innerHeight;
@@ -20,11 +44,11 @@ const dateFilterEl = document.getElementById("dateFilter");
 const translitMap = {
   "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "e", "ж": "zh", "з": "z", "и": "i",
   "й": "y", "к": "k", "л": "l", "м": "m", "н": "n", "о": "o", "п": "p", "р": "r", "с": "s", "т": "t",
-  "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch", "ы": "y", "э": "e",
+  "у": "u", "ф": "f", "х": "kh", "ц": "ts", "ч": "ch", "ш": "sh", "щ": "shch", "ы": "y", 'ь': "", "э": "e",
   "ю": "yu", "я": "ya"
 };
 function translit(s) {
-  s = s.replace(/ь/g, ''); // принудительно удаляем мягкий знак
+  s = s.replace(/ь/g, '');
   return s.toLowerCase().split("").map(ch => translitMap[ch] || ch).join("");
 }
 
@@ -84,10 +108,38 @@ function filterByDate(edges, range) {
   });
 }
 
+// --- FILL SENDER SELECT --------------------------------
+function populateSenderSelect() {
+  const senderSet = new Set();
+
+  Object.values(window.extraData).forEach(({ edges }) => {
+    edges.forEach(e => {
+      const sender = e.details?.sender?.trim();
+      if (sender) senderSet.add(sender);
+    });
+  });
+
+  const select = document.getElementById("sender-select");
+  if (!select) return;
+
+  const sortedSenders = Array.from(senderSet).sort((a, b) => a.localeCompare(b, 'ru'));
+
+  // Очистка и заполнение
+  for (const sender of sortedSenders) {
+    const opt = document.createElement("option");
+    opt.value = sender;
+    opt.textContent = sender;
+    select.appendChild(opt);
+  }
+}
+
 // --- Загрузка исходных данных -------------------------
 let graphDataNodes = [];
 d3.json("graph_data.json")
-  .then(data => { graphDataNodes = data.nodes; })
+  .then(data => { 
+  	graphDataNodes = data.nodes;
+	populateSenderSelect();
+  })
   .catch(err => { console.error("Ошибка загрузки graph_data.json:", err); });
 
 // --- ZOOM & PAN ---------------------------------------
@@ -112,14 +164,14 @@ zoomControls.append("button")
   .attr("id", "zoom-in")
   .text("+")
   .on("click", () => {
-    svg.transition().call(zoomBehavior.scaleBy, 1.2);
+    svg.transition().call(zoomBehavior.scaleBy, 1.5);
   });
 
 zoomControls.append("button")
   .attr("id", "zoom-out")
   .text("−")
   .on("click", () => {
-    svg.transition().call(zoomBehavior.scaleBy, 1 / 1.2);
+    svg.transition().call(zoomBehavior.scaleBy, 1 / 1.5);
   });
 
 
@@ -148,7 +200,7 @@ function dragended(event, d) {
 function showEdgeDetails(d) {
   const det = d.details || {};
   d3.select("#detailsContent").html(`
-    <p><strong>Ссылка:</strong> ${det.link || '-'}</p>
+    <p><strong>Ссылка:</strong> <a href="${det.link}" target="_blank" rel="noopener noreferrer">${det.link}</a></p>
     <p><strong>Номер регистрации:</strong> ${det.registration_number || '-'}</p>
     <p><strong>Системный номер:</strong> ${det.system_number || '-'}</p>
     <p><strong>Дата регистрации:</strong> ${det.reg_date || '-'}</p>
@@ -163,8 +215,8 @@ function showEdgeDetails(d) {
     <p><strong>Категория документа:</strong> ${det.doc_category || '-'}</p>
     <p><strong>Срочность:</strong> ${det.urgency || '-'}</p>
     <p><strong>Этап:</strong> ${det.stage || '-'}</p>
-    <p><strong>Тег:</strong> ${det.tag || '-'}</p>
     <p><strong>Категория:</strong> ${det.category || '-'}</p>
+	<p><strong>Тег:</strong> ${det.tag || '-'}</p>
   `);
   d3.select("#detailsContent").style("display", "block");
 }
@@ -207,15 +259,21 @@ function buildGraphFromSender(senderInput) {
   });
 
   filtered.forEach(({ tagId, details }) => {
-      // Пропускаем документы без тега или без получателей
-    if (!details.tag || !Array.isArray(details.receivers) || details.receivers.length === 0) {
-    return; // не строим ветку
-    }
+  	//Пропускаем документы без тега или без получателей
+	if (!details.tag || !details.doc_type || !details.receivers || details.receivers.length === 0) {
+		return;
+	}
+	
+	if (filterByDate([{ details }], range).length === 0) {
+		return;
+	}
+	
     const category = details.category || "Без категории";
     const categoryId = translit(category).replace(/\s+/g, "_");
 
     const tag = details.tag || tagId;
-    const tagIdNode = tagId;
+    const tagIdNode = `${categoryId}_tag_${translit(tag)}`;
+	//const tagIdNode = tagId;
 
     const docType = details.doc_type || "Без типа";
     const docId = `${tagIdNode}_doc_${translit(docType)}`;
@@ -318,7 +376,7 @@ function buildGraph(nodes, links) {
   // Настройка симуляции с усиленным отталкиванием и большей дистанцией
   simulation = d3.forceSimulation(nodes)
     .force("link", d3.forceLink(links).id(d => d.id).distance(400).strength(1))
-    .force("charge", d3.forceManyBody().strength(-1000))
+    .force("charge", d3.forceManyBody().strength(-1200))
     .force("center", d3.forceCenter(width / 2, height / 2))
     .force("collision", d3.forceCollide().radius(d => getNodeRadius(d) + 10));
 
@@ -339,12 +397,12 @@ function buildGraph(nodes, links) {
     })
     .attr("stroke-width", 6)
     .on("click", (e, d) => {
-      if (d.details && Object.keys(d.details).length > 0) {
-        showEdgeDetails(d);
-      } else {
-        d3.select("#detailsContent").style("display", "none").html("");
-    }
-  }); 
+		if (d.details && Object.keys(d.details).length > 0) {
+			showEdgeDetails(d);
+		} else {
+			d3.select("#detailsContent").style("display", "none").html("");
+		}
+  });
 
   // Узлы
   const nodeSel = nodeGroup.selectAll("g.node")
@@ -431,18 +489,17 @@ function buildGraph(nodes, links) {
   // Функция радиуса
   function getNodeRadius(d) {
    if (d.type === "person" && d.fixed) return 60;
-   //if (d.type === "category") return 50;
    if (d.type === "category") {
     const base = 45;
     const count = d.tagCount || 1;
     const radius = base + (count - 1) * 6;
-    return Math.min(radius, 120); // ограничим максимум
+    return Math.min(radius, 160); // ограничим максимум
   }
    if (d.type === "tag") return 40;
    if (d.type === "doc_type") {
      const base = 30;
      const radius = base + (d.count > 1 ? (d.count - 1) * 5 : 0);
-     return Math.min(radius, 180);  // Ограничение максимального радиуса
+     return Math.min(radius, 200);  // Ограничение максимального радиуса
   } 
    return 30;
  }
@@ -459,9 +516,17 @@ function buildGraph(nodes, links) {
       docNode.fx = docNode.x;
       docNode.fy = docNode.y;
     }
-
-    const tagId = d.id.split("_doc_")[0];
-    const extra = window.extraData[tagId];
+	
+	const tagIdMatch = d.id.match(/_tag_(.+?)_doc_/);
+	const tagId = tagIdMatch ? tagIdMatch[1] : null;
+	if (!tagId || !(tagId in window.extraData)) {
+		alert("Не найден tagId для узла: " + d.id + "\nИзвлечённый: " + tagId + "\nДоступные ключи: " + Object.keys(window.extraData).join(", "));
+		return;
+	}
+	const extra = window.extraData[tagId];
+    //const tagId = d.id.split("_doc_")[0];
+	//alert(`tagId = ${tagId}\nKeys: ${Object.keys(window.extraData).join("\n")}`);
+    //const extra = window.extraData[tagId];
     if (!extra || !currentSenderKey) return;
 
     let edgesFor = extra.edges.filter(e =>
@@ -522,39 +587,6 @@ function buildGraph(nodes, links) {
   });
 }
 
-// --- FILL SENDER SELECT --------------------------------
-function populateSenderSelect() {
-  const senderSet = new Set();
-
-  Object.values(window.extraData).forEach(({ edges }) => {
-    edges.forEach(e => {
-      const sender = e.details?.sender?.trim();
-      if (sender) senderSet.add(sender);
-    });
-  });
-
-  const select = document.getElementById("sender-select");
-  if (!select) return;
-
-  const sortedSenders = Array.from(senderSet).sort((a, b) => a.localeCompare(b, 'ru'));
-
-  // Очистка и заполнение
-  for (const sender of sortedSenders) {
-    const opt = document.createElement("option");
-    opt.value = sender;
-    opt.textContent = sender;
-    select.appendChild(opt);
-  }
-}
-
-// Вызовим populate при загрузке данных
-d3.json("graph_data.json")
-  .then(data => {
-    graphDataNodes = data.nodes;
-    populateSenderSelect();  // Заполнить select отправителей
-  })
-  .catch(err => { console.error("Ошибка загрузки graph_data.json:", err); });
-
 // --- UI -----------------------------------------------
 document.getElementById("searchButton").addEventListener("click", () => {
   const v = document.getElementById("sender-select").value.trim();
@@ -565,10 +597,10 @@ document.getElementById("searchButton").addEventListener("click", () => {
 document.getElementById("backButton").addEventListener("click", () => {
   document.getElementById("sender-select").value = "";
   document.getElementById("dateFilter").value = "";
-
+  
   d3.select("svg").selectAll("*").remove();
   d3.select("#detailsContent").style("display", "none");
-
+  
   allNodes = [];
   allLinks = [];
   currentSenderKey = null;
@@ -578,7 +610,7 @@ document.getElementById("backButton").addEventListener("click", () => {
 dateFilterEl.addEventListener("change", () => {
   const sender = document.getElementById("sender-select").value.trim();
   if (sender) {
-    buildGraphFromSender(sender);
+  	buildGraphFromSender(sender);
   }
 });
 
