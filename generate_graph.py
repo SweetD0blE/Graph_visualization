@@ -44,7 +44,9 @@ def main(input_excel='sample.xlsx', output_json='graph_data.json'):
             'type': 'person',
         }
         if people[pid]['imgExists']:
-            node['img'] = f"img/{pid}.jpg"
+            node['img'] = f"{pid}.jpg"
+        else:
+            node['img'] = f"yvolen.png"
         if i == 0:
             node['fixed'] = True
         nodes_persons.append(node)
