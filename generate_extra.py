@@ -53,7 +53,9 @@ def main(input_excel='sample.xlsx', output_js='extra_data.js'):
                     'type': 'person'
                 }
                 if people[pid]['imgExists']:
-                    node['img'] = f"img/{pid}.jpg"
+                    node['img'] = f"{pid}.jpg"
+                else:
+                    node['img'] = "yvolen.png"
                 extra[tag]['nodes'].append(node)
 
         for rec in receivers:
